@@ -1,41 +1,74 @@
-# .github/workflows/build.yml
-# -------------------------------------------------
-# CI workflow for a pnpm‑based project
-# * Caches dependencies via actions/setup-node@v4
-# * Uses Node 20 – adjust if you need another version
-# * Runs “pnpm install” (no --frozen-lockfile) then your build script
-#   so the lock file can be auto‑updated in CI if it’s stale
-# -------------------------------------------------
-
-name: build
+# .github/workflows/deploy-pages.yml
+#
+# Deploy a static-exported Next.js site (built with pnpm) to GitHub Pages
+# ----------------------------------------------------------------------
+# 1. Builds the site with `pnpm run build` (must produce static files in ./out)
+# 2. Uploads that folder as a Pages artifact
+# 3. Deploys to the repository’s GitHub Pages site
+#
+# Prerequisites:
+#   • next.config.js should contain `output: 'export'`
+#   • A script `"build": "next build && next export"` (or similar) must exist
+#     and output to the default ./out directory
+#   • In repo Settings → Pages, set “Source” to “GitHub Actions”
+#   • This workflow lives at .github/workflows/deploy-pages.yml
+#
+name: Deploy to GitHub Pages
 
 on:
+  # Rebuild & redeploy on every push to main
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:        # …or run manually from the Actions tab
+
+# Grant the token permissions required by Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment – cancel running deployments on new pushes
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      # 1. Check out repository
+      # 1️⃣ Check out source
       - uses: actions/checkout@v4
 
-      # 2. Install pnpm itself
+      # 2️⃣ Install pnpm
       - uses: pnpm/action-setup@v2
         with:
           version: 9
-          run_install: false         # we’ll run install explicitly later
+          run_install: false
 
-      # 3. Set up Node and dependency cache
+      # 3️⃣ Node & pnpm cache
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml  # location of the lock file
+          cache-dependency-path: pnpm-lock.yaml
 
-      # 4. Install deps & build
-      #    Using plain “pnpm install” so the lockfile can be regenerated
+      # 4️⃣ Install deps & build (static export ends up in ./out)
       - run: pnpm install
-      - run: pnpm run build          # replace with your actual build command
+      - run: pnpm run build
+
+      # 5️⃣ Upload the static site as a Pages artifact
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: \${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # 🚀 Deploy to GitHub Pages
+      - uses: actions/deploy-pages@v4
+        id: deployment
