@@ -1,0 +1,66 @@
+# .github/workflows/build-and-deploy.yml
+# ------------------------------------------------------------------
+# Build & deploy a static Next.js site to GitHub Pages
+#
+# • Uses pnpm + Node 20
+# • `next build && next export` must output static files into ./out
+# • Requires next.config.js with `output: 'export'`
+# • In repo Settings → Pages, set Source = GitHub Actions
+# ------------------------------------------------------------------
+
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]        # Build on every push to main
+  workflow_dispatch:        # …and allow manual runs from the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Check out repository
+      - uses: actions/checkout@v4
+
+      # 2️⃣ Install pnpm
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9                    # choose any ≥ 6.10
+          run_install: false            # we’ll run install manually
+
+      # 3️⃣ Set up Node and dependency cache
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      # 4️⃣ Install dependencies & build
+      - run: pnpm install
+      - run: pnpm run build             # must create ./out
+
+      # 5️⃣ Upload the static site as a GitHub Pages artifact
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out                   # ⚠️ This folder must exist!
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
